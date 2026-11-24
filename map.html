@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EcoRadar — карта воздуха MVP</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f7f6;
+  --panel:rgba(255,255,255,.86);
+  --stroke:rgba(0,0,0,.08);
+  --text:#1e293b;
+  --muted:#94a3b8;
+  --accent:#10b981;
+  --accent-dim:rgba(16,185,129,.10);
+  --shadow:0 4px 16px rgba(0,0,0,.06),0 2px 6px rgba(0,0,0,.04);
+  --radius:20px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font:15px/1.5 'Inter',Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.app{
+  display:grid;
+  grid-template-columns:380px 1fr;
+  min-height:100vh;
+  gap:12px;
+  padding:12px;
+}
+.panel{
+  background:var(--panel);
+  border:1px solid var(--stroke);
+  border-radius:var(--radius);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  box-shadow:var(--shadow);
+  position:relative;
+}
+.panel::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:linear-gradient(135deg,rgba(255,255,255,.50) 0%,transparent 50%);
+  pointer-events:none;
+}
+.sidebar{
+  padding:24px 20px;
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+.sidebar-brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:6px;
+}
+.sidebar-logo{
+  width:38px;
+  height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  background:var(--accent-dim);
+  border:1px solid rgba(16,185,129,.18);
+  border-radius:10px;
+  flex-shrink:0;
+}
+h1{
+  margin:0;
+  font-size:22px;
+  font-weight:700;
+  line-height:1.2;
+  letter-spacing:-.3px;
+}
+.subtitle{
+  color:var(--muted);
+  margin:0 0 18px;
+  font-size:13px;
+  line-height:1.5;
+}
+.section{
+  margin-top:18px;
+  padding-top:18px;
+  border-top:1px solid rgba(0,0,0,.06);
+}
+.section-title{
+  font-size:11px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  color:var(--muted);
+  margin-bottom:10px;
+}
+.row{
+  display:flex;
+  gap:8px;
+  margin:10px 0;
+  flex-wrap:wrap;
+}
+input,button,select{
+  border:none;
+  border-radius:10px;
+  padding:10px 14px;
+  font:inherit;
+  font-size:13px;
+  transition:all .2s ease;
+}
+input{
+  flex:1 1 200px;
+  background:rgba(0,0,0,.04);
+  color:var(--text);
+  outline:none;
+  border:1px solid rgba(0,0,0,.08);
+}
+input:focus{
+  border-color:rgba(16,185,129,.45);
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(16,185,129,.12);
+}
+input::placeholder{color:var(--muted)}
+button,select{
+  background:rgba(0,0,0,.04);
+  color:var(--text);
+  cursor:pointer;
+  border:1px solid rgba(0,0,0,.08);
+  font-weight:500;
+}
+select option{
+  color:#111;
+  background:#fff;
+}
+select{appearance:auto}
+button:hover,select:hover{
+  background:rgba(16,185,129,.10);
+  border-color:rgba(16,185,129,.25);
+  transform:translateY(-1px);
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+button:active{transform:translateY(0)}
+input:hover{border-color:rgba(0,0,0,.15)}
+.chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 12px;
+  border-radius:999px;
+  background:rgba(0,0,0,.03);
+  border:1px solid rgba(0,0,0,.06);
+  font-size:12px;
+  margin:4px 6px 0 0;
+  color:var(--muted);
+  cursor:default;
+}
+.chip strong{color:var(--text)}
+.legend{
+  display:grid;
+  gap:6px;
+  margin-top:10px;
+}
+.legend-item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:#475569;
+  font-size:13px;
+}
+.swatch{
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  border:1px solid rgba(0,0,0,.10);
+  flex:0 0 auto;
+}
+.map-wrap{
+  position:relative;
+  min-height:70vh;
+  overflow:hidden;
+}
+#map{
+  width:100%;
+  height:calc(100vh - 24px);
+  border-radius:var(--radius);
+}
+#map .leaflet-tile-pane .leaflet-layer:first-child{
+  filter:brightness(1.02) contrast(1.02);
+}
+#map .leaflet-control-zoom a{
+  background:rgba(255,255,255,.88);
+  color:var(--text);
+  border:1px solid rgba(0,0,0,.08);
+  border-radius:8px;
+  backdrop-filter:blur(8px);
+}
+#map .leaflet-control-zoom{
+  border:none;
+  border-radius:10px;
+  overflow:hidden;
+  box-shadow:0 2px 10px rgba(0,0,0,.08);
+}
+.overlay{
+  position:absolute;
+  top:14px;
+  right:14px;
+  z-index:900;
+  width:min(360px,calc(100% - 28px));
+  padding:16px 18px;
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--stroke);
+  border-radius:16px;
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  box-shadow:var(--shadow);
+}
+.overlay::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:linear-gradient(135deg,rgba(255,255,255,.50) 0%,transparent 50%);
+  pointer-events:none;
+}
+.aqi-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.aqi-big{
+  font-size:36px;
+  font-weight:800;
+  line-height:1;
+  letter-spacing:-1px;
+  color:var(--text);
+}
+.aqi-status{
+  font-size:14px;
+  font-weight:500;
+  color:var(--muted);
+}
+.small{
+  color:var(--muted);
+  font-size:12px;
+}
+.list{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+.card{
+  padding:14px;
+  border-radius:12px;
+  background:rgba(0,0,0,.02);
+  border:1px solid rgba(0,0,0,.06);
+  transition:all .2s ease;
+  cursor:pointer;
+}
+.card:hover{
+  background:rgba(0,0,0,.04);
+  border-color:rgba(16,185,129,.20);
+  transform:translateY(-2px);
+  box-shadow:0 6px 20px rgba(0,0,0,.08);
+}
+.card h3,.card h4{
+  margin:0 0 4px;
+  font-size:14px;
+  font-weight:700;
+}
+.muted{color:var(--muted)}
+.warning{color:#d97706}
+.danger{color:#dc2626}
+.ok{color:#059669}
+.footnote{
+  margin-top:16px;
+  color:var(--muted);
+  font-size:11px;
+  opacity:.7;
+}
+.recycling-icon{
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#10b981;
+  color:#fff;
+  border:2px solid #fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.18);
+  font-size:15px;
+  line-height:1;
+}
+.park-icon{
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#22c55e;
+  color:#fff;
+  border:2px solid #fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.18);
+  font-size:15px;
+  line-height:1;
+}
+.note-box{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:rgba(16,185,129,.06);
+  border:1px solid rgba(16,185,129,.12);
+  font-size:12px;
+  color:var(--muted);
+}
+.back-link{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:var(--muted);
+  text-decoration:none;
+  font-size:12px;
+  font-weight:500;
+  margin-bottom:14px;
+  transition:color .2s;
+}
+.back-link:hover{color:var(--accent)}
+.live-dot{
+  display:inline-block;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#10b981;
+  margin-right:6px;
+  animation:livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse{
+  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,.4)}
+  50%{opacity:.7;box-shadow:0 0 0 6px rgba(16,185,129,0)}
+}
+.live-badge{
+  display:inline-flex;
+  align-items:center;
+  font-size:11px;
+  font-weight:600;
+  color:#059669;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+}
+.aqi-timestamp{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:6px;
+}
+.pollutant-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:6px;
+  font-size:12px;
+}
+.pollutant-name{
+  width:42px;
+  font-weight:600;
+  color:var(--text);
+  flex-shrink:0;
+}
+.pollutant-bar-bg{
+  flex:1;
+  height:6px;
+  border-radius:3px;
+  background:rgba(0,0,0,.06);
+  overflow:hidden;
+}
+.pollutant-bar-fill{
+  height:100%;
+  border-radius:3px;
+  transition:width .6s ease;
+}
+.pollutant-val{
+  width:38px;
+  text-align:right;
+  color:var(--muted);
+  font-size:11px;
+  flex-shrink:0;
+}
+.auto-timer{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:4px;
+}
+@media (max-width:960px){
+  .app{grid-template-columns:1fr}
+  .sidebar{order:2}
+  .map-wrap{order:1}
+  #map{height:62vh}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel sidebar">
+    <a href="index.html" class="back-link">← Назад на главную</a>
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">🌿</div>
+      <h1>EcoRadar</h1>
+    </div>
+    <p class="subtitle">Актуальная карта качества воздуха в Алматы. Чистые зоны, парки, переработка и маршруты для прогулок.</p>
+
+    <div class="row">
+      <input id="addressInput" placeholder="Введите адрес или выберите геопозицию">
+      <button id="searchBtn">Найти</button>
+    </div>
+
+    <div class="row">
+      <button id="geoBtn">📍 Моя геопозиция</button>
+      <button id="refreshBtn">🔄 Обновить воздух</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Маршрут до парка</div>
+      <div class="row">
+        <select id="sensitivityMode" style="min-width:200px">
+          <option value="normal">Обычный</option>
+          <option value="sensitive">Безопасный</option>
+        </select>
+        <button id="routeBtn">Построить маршрут</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🗺️ Чистый маршрут A → B</div>
+      <div class="note-box" style="margin-top:0;margin-bottom:8px">Ставьте метку на карте — это точка назначения A. Ваша геопозиция — точка старта B.</div>
+      <div class="row">
+        <button id="placeMarkerBtn">📌 Поставить метку A</button>
+        <button id="cleanRouteBtn">🚶 Построить чистый путь</button>
+      </div>
+      <div class="row">
+        <button id="clearMarkersBtn" style="opacity:.7">✕ Сбросить метки</button>
+      </div>
+      <div id="abRouteInfo" class="list">
+        <div class="card muted">Поставьте метку на карте и нажмите «Построить чистый путь».</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="chip">🌿 Парки: <strong id="parksCount">—</strong></div>
+      <div class="chip">♻️ Переработка: <strong id="recyclingCount">—</strong></div>
+      <div class="chip">🏭 Источники: <strong id="sourcesCount">—</strong></div>
+      <div class="chip">📍 Статус: <strong id="statusText">готово</strong></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Легенда воздуха</div>
+      <div class="legend">
+        <div class="legend-item"><span class="swatch" style="background:#34d399"></span>0–50 — хороший</div>
+        <div class="legend-item"><span class="swatch" style="background:#fbbf24"></span>51–100 — нормальный</div>
+        <div class="legend-item"><span class="swatch" style="background:#f97316"></span>101–150 — повышенный</div>
+        <div class="legend-item"><span class="swatch" style="background:#f87171"></span>151–200 — плохой</div>
+        <div class="legend-item"><span class="swatch" style="background:#a78bfa"></span>201–300 — очень плохой</div>
+        <div class="legend-item"><span class="swatch" style="background:#6b7280"></span>301+ — опасный</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Парки рядом</div>
+      <div id="parksList" class="list">
+        <div class="card muted">Введите адрес или нажмите «Моя геопозиция», чтобы найти парки рядом.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Пункты переработки рядом</div>
+      <div id="recyclingList" class="list">
+        <div class="card muted">Введите адрес или нажмите «Моя геопозиция», чтобы найти пункты переработки рядом.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Маршрут для прогулки</div>
+      <div id="routeInfo" class="list">
+        <div class="card muted">Пока маршрут не построен.</div>
+      </div>
+      <div class="note-box">Пешеходный маршрут строится по дорожной сети.</div>
+    </div>
+
+    <div class="footnote">Для стабильной работы лучше открывать файл через localhost.</div>
+  </aside>
+
+  <main class="panel map-wrap">
+    <div id="map"></div>
+    <div class="overlay">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="live-badge"><span class="live-dot"></span>В реальном времени</div>
+        <div class="small" id="aqiSource">OpenWeather</div>
+      </div>
+      <div class="aqi-top">
+        <div>
+          <div class="aqi-big" id="aqiNumber">AQI: —</div>
+          <div class="aqi-status" id="aqiLabel">Ожидание данных</div>
+        </div>
+      </div>
+      <div id="pollutantBars"></div>
+      <div class="aqi-timestamp" id="aqiTimestamp">Обновление...</div>
+      <div class="auto-timer" id="autoTimer"></div>
+    </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const openWeatherKey = "your_api_key";
+
+const addressInput = document.getElementById("addressInput");
+const searchBtn = document.getElementById("searchBtn");
+const geoBtn = document.getElementById("geoBtn");
+const refreshBtn = document.getElementById("refreshBtn");
+const routeBtn = document.getElementById("routeBtn");
+const sensitivityMode = document.getElementById("sensitivityMode");
+const placeMarkerBtn = document.getElementById("placeMarkerBtn");
+const cleanRouteBtn = document.getElementById("cleanRouteBtn");
+const clearMarkersBtn = document.getElementById("clearMarkersBtn");
+const abRouteInfo = document.getElementById("abRouteInfo");
+const parksList = document.getElementById("parksList");
+const recyclingList = document.getElementById("recyclingList");
+const routeInfo = document.getElementById("routeInfo");
+const parksCount = document.getElementById("parksCount");
+const recyclingCount = document.getElementById("recyclingCount");
+const sourcesCount = document.getElementById("sourcesCount");
+const statusText = document.getElementById("statusText");
+const aqiNumber = document.getElementById("aqiNumber");
+const aqiLabel = document.getElementById("aqiLabel");
+const pollutantBars = document.getElementById("pollutantBars");
+const aqiTimestamp = document.getElementById("aqiTimestamp");
+const autoTimer = document.getElementById("autoTimer");
+const aqiSource = document.getElementById("aqiSource");
+
+let currentPoint = { lat:43.238949, lon:76.889709, label:"Алматы" };
+let selectedPark = null;
+let markerA = null;
+let markerB = null;
+let pointA = null;
+let pointB = null;
+let placingMarker = false;
+
+const almatyBounds = L.latLngBounds(L.latLng(43.10,76.70),L.latLng(43.42,77.15));
+
+const map = L.map("map", {
+  zoomControl:true,
+  maxBounds:almatyBounds,
+  maxBoundsViscosity:1.0,
+  minZoom:11
+}).setView([currentPoint.lat,currentPoint.lon],12);
+
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom:19,
+  attribution:"Tiles &copy; Esri &mdash; Esri, TomTom, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors, and the GIS User Community"
+}).addTo(map);
+
+L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom:17,
+  opacity:.22,
+  attribution:"&copy; OpenTopoMap"
+}).addTo(map);
+
+const airLayer = L.layerGroup().addTo(map);
+const parksLayer = L.layerGroup().addTo(map);
+const recyclingLayer = L.layerGroup().addTo(map);
+const sourcesLayer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
+const focusLayer = L.layerGroup().addTo(map);
+const abRouteLayer = L.layerGroup().addTo(map);
+
+const pollutionSources = [
+  { name:"ТЭЦ-1 им. Б. Оразбаева", query:"ТЭЦ-1 Алматы", type:"ТЭЦ" },
+  { name:"ТЭЦ-2 им. А. Жакутова", query:"ТЭЦ-2 Алматы", type:"ТЭЦ" },
+  { name:"ТЭЦ-3", query:"ТЭЦ-3 Отеген батыр", type:"ТЭЦ" },
+  { name:"Западный тепловой комплекс", query:"Западный тепловой комплекс Алматы", type:"Теплокомплекс" },
+  { name:"Северное кольцо / крупный трафик", lat:43.2898, lon:76.9015, type:"Трафик" },
+  { name:"Райымбека / Сейфуллина", lat:43.2623, lon:76.9285, type:"Трафик" },
+  { name:"Саина / Толе би", lat:43.2408, lon:76.8674, type:"Трафик" }
+];
+
+const fallbackParks = [
+  { name:"Атакент", lat:43.2245, lon:76.9064, type:"крупная зелёная зона" },
+  { name:"Парк имени Махатмы Ганди", lat:43.2307, lon:76.8759, type:"крупный парк" },
+  { name:"Ботанический сад", lat:43.2236, lon:76.9189, type:"крупная зелёная зона" },
+  { name:"Парк 28 гвардейцев-панфиловцев", lat:43.2580, lon:76.9544, type:"крупный парк" },
+  { name:"Парк Южный", lat:43.2058, lon:76.8918, type:"парк" },
+  { name:"Центральный парк культуры и отдыха", lat:43.2602, lon:76.9736, type:"крупный парк" },
+  { name:"Парк Горького", lat:43.2602, lon:76.9736, type:"крупный парк" },
+  { name:"Парк Первого Президента", lat:43.1936, lon:76.8860, type:"крупный парк" },
+  { name:"Парк Family", lat:43.2314, lon:76.8385, type:"парк" },
+  { name:"Терренкур", lat:43.2226, lon:76.9565, type:"зелёная зона" }
+];
+
+const fallbackRecycling = [
+  { name:"Пункт переработки Атакент", lat:43.2249, lon:76.9074, accepted:["plastic","paper","glass"] },
+  { name:"Recycle Point Dostyk", lat:43.2385, lon:76.9555, accepted:["plastic","paper"] },
+  { name:"Пункт приёма вторсырья", lat:43.2356, lon:76.8924, accepted:["plastic","metal","paper"] },
+  { name:"Eco Network", lat:43.2450, lon:76.9280, accepted:["plastic","paper","glass"] },
+  { name:"Пункт переработки Mega", lat:43.2020, lon:76.8928, accepted:["plastic","paper"] },
+  { name:"Пункт переработки Орбита", lat:43.2083, lon:76.8785, accepted:["plastic","metal"] },
+  { name:"Пункт переработки Алмалинский район", lat:43.2508, lon:76.9195, accepted:["paper","plastic"] }
+];
+
+function setStatus(text){
+  statusText.textContent = text;
+}
+
+function getAQIStyle(aqi){
+  if(aqi <= 50) return { label:"🟢 Хороший", color:"#2ecc71" };
+  if(aqi <= 100) return { label:"🟡 Нормальный", color:"#f1c40f" };
+  if(aqi <= 150) return { label:"🟠 Повышенный", color:"#e67e22" };
+  if(aqi <= 200) return { label:"🔴 Плохой", color:"#e74c3c" };
+  if(aqi <= 300) return { label:"🟣 Очень плохой", color:"#8e44ad" };
+  return { label:"⚫ Опасный", color:"#4b4b4b" };
+}
+
+function escapeHtml(value=""){
+  return String(value).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+}
+
+function toRad(v){ return v * Math.PI / 180; }
+
+function distanceKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function scale(C, Clow, Chigh, Ilow, Ihigh){
+  return Math.round(((Ihigh - Ilow) / (Chigh - Clow)) * (C - Clow) + Ilow);
+}
+
+function calculateAQI_PM25(c){
+  if(c<=12.0)return scale(c,0.0,12.0,0,50);
+  if(c<=35.4)return scale(c,12.1,35.4,51,100);
+  if(c<=55.4)return scale(c,35.5,55.4,101,150);
+  if(c<=150.4)return scale(c,55.5,150.4,151,200);
+  if(c<=250.4)return scale(c,150.5,250.4,201,300);
+  if(c<=350.4)return scale(c,250.5,350.4,301,400);
+  return scale(c,350.5,500.4,401,500);
+}
+
+function calculateAQI_PM10(c){
+  if(c<=54)return scale(c,0,54,0,50);
+  if(c<=154)return scale(c,55,154,51,100);
+  if(c<=254)return scale(c,155,254,101,150);
+  if(c<=354)return scale(c,255,354,151,200);
+  if(c<=424)return scale(c,355,424,201,300);
+  if(c<=504)return scale(c,425,504,301,400);
+  return scale(c,505,604,401,500);
+}
+
+function calculateAQI_NO2(c){
+  if(c<=53)return scale(c,0,53,0,50);
+  if(c<=100)return scale(c,54,100,51,100);
+  if(c<=360)return scale(c,101,360,101,150);
+  if(c<=649)return scale(c,361,649,151,200);
+  if(c<=1249)return scale(c,650,1249,201,300);
+  if(c<=1649)return scale(c,1250,1649,301,400);
+  return scale(c,1650,2049,401,500);
+}
+
+function calculateAQI_SO2(c){
+  if(c<=35)return scale(c,0,35,0,50);
+  if(c<=75)return scale(c,36,75,51,100);
+  if(c<=185)return scale(c,76,185,101,150);
+  if(c<=304)return scale(c,186,304,151,200);
+  if(c<=604)return scale(c,305,604,201,300);
+  if(c<=804)return scale(c,605,804,301,400);
+  return scale(c,805,1004,401,500);
+}
+
+function calculateAQI_O3(ug){
+  const ppb = ug * .509;
+  if(ppb<=54)return scale(ppb,0,54,0,50);
+  if(ppb<=70)return scale(ppb,55,70,51,100);
+  if(ppb<=85)return scale(ppb,71,85,101,150);
+  if(ppb<=105)return scale(ppb,86,105,151,200);
+  if(ppb<=200)return scale(ppb,106,200,201,300);
+  return scale(ppb,201,300,301,500);
+}
+
+function calculateAQI_CO(ug){
+  const ppm = (ug/1000)/1.145;
+  if(ppm<=4.4)return scale(ppm,0.0,4.4,0,50);
+  if(ppm<=9.4)return scale(ppm,4.5,9.4,51,100);
+  if(ppm<=12.4)return scale(ppm,9.5,12.4,101,150);
+  if(ppm<=15.4)return scale(ppm,12.5,15.4,151,200);
+  if(ppm<=30.4)return scale(ppm,15.5,30.4,201,300);
+  if(ppm<=40.4)return scale(ppm,30.5,40.4,301,400);
+  return scale(ppm,40.5,50.4,401,500);
+}
+
+async function fetchJson(url, options={}){
+  const res = await fetch(url, options);
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter"
+];
+
+async function fetchOverpass(query){
+  let lastError = null;
+  for(const endpoint of OVERPASS_ENDPOINTS){
+    try{
+      const res = await fetch(endpoint, {
+        method:"POST",
+        headers:{ "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
+        body:"data=" + encodeURIComponent(query)
+      });
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    }catch(err){
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("Overpass недоступен");
+}
+
+async function geocodeAddress(query){
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`;
+  const data = await fetchJson(url, { headers:{ "Accept-Language":"ru" } });
+  if(!data.length) throw new Error("Адрес не найден");
+  return { lat:Number(data[0].lat), lon:Number(data[0].lon), label:data[0].display_name };
+}
+
+async function reverseGeocode(lat, lon){
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
+  const data = await fetchJson(url, { headers:{ "Accept-Language":"ru" } });
+  return data.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+async function loadOpenWeatherAQI(lat, lon){
+  const url = `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${openWeatherKey}`;
+  const data = await fetchJson(url);
+  if(!data.list || !data.list.length) throw new Error("Нет данных по воздуху");
+  const comp = data.list[0].components || {};
+  const pm25 = comp.pm2_5 ?? null;
+  const pm10 = comp.pm10 ?? null;
+  const no2 = comp.no2 ?? null;
+  const so2 = comp.so2 ?? null;
+  const o3 = comp.o3 ?? null;
+  const co = comp.co ?? null;
+  const parts = [];
+  if(pm25 != null) parts.push({ name:"PM2.5", aqi:calculateAQI_PM25(Number(pm25)), value:Number(pm25) });
+  if(pm10 != null) parts.push({ name:"PM10", aqi:calculateAQI_PM10(Number(pm10)), value:Number(pm10) });
+  if(no2 != null) parts.push({ name:"NO₂", aqi:calculateAQI_NO2(Number(no2)), value:Number(no2) });
+  if(so2 != null) parts.push({ name:"SO₂", aqi:calculateAQI_SO2(Number(so2)), value:Number(so2) });
+  if(o3 != null) parts.push({ name:"O₃", aqi:calculateAQI_O3(Number(o3)), value:Number(o3) });
+  if(co != null) parts.push({ name:"CO", aqi:calculateAQI_CO(Number(co)), value:Number(co) });
+  if(!parts.length) throw new Error("Пустые данные загрязнителей");
+  const worst = parts.reduce((max,p) => p.aqi > max.aqi ? p : max, parts[0]);
+  return { aqi:worst.aqi, dominant:worst.name, components:{ pm25, pm10, no2, so2, o3, co }, source:"OpenWeather" };
+}
+
+function getPollutantColor(aqi){
+  if(aqi <= 50) return "#10b981";
+  if(aqi <= 100) return "#eab308";
+  if(aqi <= 150) return "#f97316";
+  if(aqi <= 200) return "#ef4444";
+  return "#7c3aed";
+}
+
+function updateAQIBox(data){
+  const style = getAQIStyle(data.aqi);
+  aqiNumber.textContent = `AQI: ${data.aqi}`;
+  aqiNumber.style.color = style.color;
+  aqiLabel.textContent = style.label;
+  aqiLabel.style.color = style.color;
+  const c = data.components;
+  const pollutants = [
+    { name:"PM2.5", value:c.pm25, calcAqi:c.pm25!=null?calculateAQI_PM25(Number(c.pm25)):null, max:75 },
+    { name:"PM10", value:c.pm10, calcAqi:c.pm10!=null?calculateAQI_PM10(Number(c.pm10)):null, max:150 },
+    { name:"NO₂", value:c.no2, calcAqi:c.no2!=null?calculateAQI_NO2(Number(c.no2)):null, max:200 },
+    { name:"SO₂", value:c.so2, calcAqi:c.so2!=null?calculateAQI_SO2(Number(c.so2)):null, max:350 },
+    { name:"O₃", value:c.o3, calcAqi:c.o3!=null?calculateAQI_O3(Number(c.o3)):null, max:200 },
+    { name:"CO", value:c.co, calcAqi:c.co!=null?calculateAQI_CO(Number(c.co)):null, max:10000 }
+  ];
+  pollutantBars.innerHTML = pollutants.filter(p => p.value != null).map(p => {
+    const pct = Math.min(100, (Number(p.value) / p.max) * 100);
+    const col = p.calcAqi != null ? getPollutantColor(p.calcAqi) : "#94a3b8";
+    return `<div class="pollutant-row"><span class="pollutant-name">${p.name}</span><div class="pollutant-bar-bg"><div class="pollutant-bar-fill" style="width:${pct}%;background:${col}"></div></div><span class="pollutant-val">${Number(p.value).toFixed(1)}</span></div>`;
+  }).join("");
+  const now = new Date();
+  aqiTimestamp.textContent = `Обновлено: ${now.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}`;
+}
+
+async function drawAirGrid(){
+  airLayer.clearLayers();
+  setStatus("обновляем воздух");
+  const bounds = { minLat:43.14, maxLat:43.38, minLon:76.74, maxLon:77.02 };
+  const rows = 10;
+  const cols = 10;
+  const latStep = (bounds.maxLat - bounds.minLat) / rows;
+  const lonStep = (bounds.maxLon - bounds.minLon) / cols;
+  const points = [];
+  for(let row=0; row<rows; row++){
+    for(let col=0; col<cols; col++){
+      points.push({ lat:bounds.minLat + (row+.5)*latStep, lon:bounds.minLon + (col+.5)*lonStep });
+    }
+  }
+  const results = await Promise.all(points.map(async p => {
+    try{
+      const aq = await loadOpenWeatherAQI(p.lat,p.lon);
+      return { ...p, ...aq };
+    }catch{
+      return null;
+    }
+  }));
+  const halfLat = latStep / 2;
+  const halfLon = lonStep / 2;
+  results.filter(Boolean).forEach(item => {
+    const style = getAQIStyle(item.aqi);
+    const zoneBounds = [[item.lat-halfLat,item.lon-halfLon],[item.lat+halfLat,item.lon+halfLon]];
+    L.rectangle(zoneBounds, { color:"transparent", fillColor:style.color, fillOpacity:.28, weight:0, interactive:false, bubblingMouseEvents:false }).addTo(airLayer);
+    const marker = L.circleMarker([item.lat,item.lon], { radius:4, color:"#fff", fillColor:style.color, fillOpacity:.9, weight:1.5, interactive:true }).addTo(airLayer);
+    const c = item.components;
+    marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:13px;min-width:180px"><strong style="font-size:18px;color:${style.color}">AQI: ${item.aqi}</strong><br><span style="color:${style.color}">${style.label}</span><br><br><b>PM2.5:</b> ${c.pm25 != null ? Number(c.pm25).toFixed(1) : "—"} µg/m³<br><b>PM10:</b> ${c.pm10 != null ? Number(c.pm10).toFixed(1) : "—"} µg/m³<br><b>NO₂:</b> ${c.no2 != null ? Number(c.no2).toFixed(1) : "—"} µg/m³<br><b>SO₂:</b> ${c.so2 != null ? Number(c.so2).toFixed(1) : "—"} µg/m³<br><b>O₃:</b> ${c.o3 != null ? Number(c.o3).toFixed(1) : "—"} µg/m³<br><b>CO:</b> ${c.co != null ? Number(c.co).toFixed(1) : "—"} µg/m³</div>`);
+  });
+}
+
+function normalizeName(name){
+  return String(name || "").toLowerCase().replaceAll("ё","е").replace(/\s+/g," ").trim();
+}
+
+function dedupeByName(items){
+  const uniq = new Map();
+  items.forEach(item => {
+    const key = normalizeName(item.name);
+    if(!key) return;
+    if(!uniq.has(key) || item.distance < uniq.get(key).distance){
+      uniq.set(key,item);
+    }
+  });
+  return [...uniq.values()];
+}
+
+function parkIcon(){
+  return L.divIcon({
+    className:"",
+    html:`<div class="park-icon">🌿</div>`,
+    iconSize:[28,28],
+    iconAnchor:[14,14],
+    popupAnchor:[0,-14]
+  });
+}
+
+function recycleIcon(){
+  return L.divIcon({
+    className:"",
+    html:`<div class="recycling-icon">♻️</div>`,
+    iconSize:[28,28],
+    iconAnchor:[14,14],
+    popupAnchor:[0,-14]
+  });
+}
+
+async function loadNearbyParks(lat, lon, radius=10000){
+  parksLayer.clearLayers();
+  parksList.innerHTML = "";
+  selectedPark = null;
+  parksCount.textContent = "…";
+  setStatus("ищем парки");
+
+  let items = [];
+  try{
+    const query = `
+      [out:json][timeout:25];
+      (
+        nwr(around:${radius},${lat},${lon})["leisure"~"park|garden|nature_reserve|recreation_ground",i];
+        nwr(around:${radius},${lat},${lon})["leisure"="park"];
+        nwr(around:${radius},${lat},${lon})["landuse"~"recreation_ground|grass|forest|meadow",i];
+        nwr(around:${radius},${lat},${lon})["boundary"="national_park"];
+      );
+      out center tags;
+    `;
+    const data = await fetchOverpass(query);
+    items = (data.elements || []).map(el => {
+      const plat = el.lat ?? el.center?.lat;
+      const plon = el.lon ?? el.center?.lon;
+      if(plat == null || plon == null) return null;
+      const tags = el.tags || {};
+      const name = tags["name:ru"] || tags.name || tags["name:kk"] || "";
+      if(!name) return null;
+      return {
+        name, lat:Number(plat), lon:Number(plon),
+        distance:distanceKm(lat,lon,Number(plat),Number(plon)),
+        type:tags.leisure || tags.landuse || "зелёная зона"
+      };
+    }).filter(Boolean);
+  }catch(err){
+    console.error("Overpass parks:",err);
+  }
+  const fallback = fallbackParks.map(p => ({
+    ...p, distance:distanceKm(lat,lon,p.lat,p.lon)
+  })).filter(p => p.distance <= radius/1000);
+
+  items = dedupeByName([...items,...fallback])
+    .sort((a,b) => a.distance-b.distance)
+    .slice(0,8);
+
+  parksCount.textContent = String(items.length);
+
+  if(!items.length){
+    parksList.innerHTML = `<div class="card muted">В радиусе 10 км парки не найдены.</div>`;
+    setStatus("парки не найдены");
+    return;
+  }
+  const icon = parkIcon();
+  for(const park of items){
+    let parkAQI = null;
+    try{ parkAQI = await loadOpenWeatherAQI(park.lat,park.lon); }catch{}
+    const style = getAQIStyle(parkAQI?.aqi ?? 999);
+    L.marker([park.lat,park.lon],{icon})
+      .addTo(parksLayer)
+      .bindPopup("<strong>"+escapeHtml(park.name)+"</strong><br>Расстояние: "+park.distance.toFixed(2)+" км<br>"+(parkAQI ? "AQI рядом: "+parkAQI.aqi+" ("+escapeHtml(style.label)+")" : "AQI рядом: нет данных"));
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<h3>🌿 ${escapeHtml(park.name)}</h3><div class="muted">Расстояние: ${park.distance.toFixed(2)} км</div><div class="${parkAQI ? (parkAQI.aqi <= 100 ? "ok" : parkAQI.aqi <= 150 ? "warning" : "danger") : "ok"}">${escapeHtml(park.type || "парк")}${parkAQI ? ` · AQI ${parkAQI.aqi}` : ""}</div>`;
+    card.addEventListener("click",()=>selectPark(park.lat,park.lon,park.name));
+    parksList.appendChild(card);
+  }
+  setStatus("парки найдены");
+}
+async function loadRecyclingPoints(lat, lon, radius=10000){
+  recyclingLayer.clearLayers();
+  recyclingList.innerHTML = "";
+  recyclingCount.textContent = "…";
+  setStatus("ищем переработку");
+  let items = [];
+  try{
+    const query = `
+      [out:json][timeout:25];
+      (
+        nwr(around:${radius},${lat},${lon})["amenity"="recycling"];
+        nwr(around:${radius},${lat},${lon})["amenity"="waste_disposal"];
+        nwr(around:${radius},${lat},${lon})["recycling_type"];
+        nwr(around:${radius},${lat},${lon})["recycling:plastic"="yes"];
+        nwr(around:${radius},${lat},${lon})["recycling:paper"="yes"];
+      );
+      out center tags;
+    `;
+    const data = await fetchOverpass(query);
+    items = (data.elements || []).map(el => {
+      const pointLat = el.lat ?? el.center?.lat;
+      const pointLon = el.lon ?? el.center?.lon;
+      if(pointLat == null || pointLon == null) return null;
+      const tags = el.tags || {};
+      const accepted = [];
+      Object.keys(tags).forEach(key => {
+        if(key.startsWith("recycling:") && tags[key] === "yes") accepted.push(key.replace("recycling:",""));
+      });
+      return {
+        name:tags["name:ru"] || tags.name || tags.operator || "Пункт переработки",
+        operator:tags.operator || "—", accepted,
+        lat:Number(pointLat), lon:Number(pointLon),
+        distance:distanceKm(lat,lon,Number(pointLat),Number(pointLon))
+      };
+    }).filter(Boolean);
+  }catch(err){
+    console.error("Overpass recycling:",err);
+  }
+  const fallback = fallbackRecycling.map(p => ({
+    ...p, operator:"—", distance:distanceKm(lat,lon,p.lat,p.lon)
+  })).filter(p => p.distance <= radius/1000);
+
+  items = dedupeByName([...items,...fallback])
+    .sort((a,b) => a.distance-b.distance)
+    .slice(0,10);
+
+  recyclingCount.textContent = String(items.length);
+
+  if(!items.length){
+    recyclingList.innerHTML = `<div class="card muted">В радиусе 10 км пункты переработки не найдены.</div>`;
+    setStatus("переработка не найдена");
+    return;
+  }
+  const icon = recycleIcon();
+  items.forEach(item => {
+    const accepts = item.accepted?.length ? item.accepted.slice(0,5).join(", ") : "без уточнения";
+    L.marker([item.lat,item.lon],{icon})
+      .addTo(recyclingLayer)
+      .bindPopup(`<strong>${escapeHtml(item.name)}</strong><br>Расстояние: ${item.distance.toFixed(2)} км<br>Принимает: ${escapeHtml(accepts)}<br>Оператор: ${escapeHtml(item.operator || "—")}`);
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<h3>♻️ ${escapeHtml(item.name)}</h3><div class="muted">Расстояние: ${item.distance.toFixed(2)} км</div><div class="ok">Принимает: ${escapeHtml(accepts)}</div>`;
+    card.addEventListener("click",()=>{
+      map.setView([item.lat,item.lon],16);
+      L.popup().setLatLng([item.lat,item.lon]).setContent(`<strong>${escapeHtml(item.name)}</strong><br>Расстояние: ${item.distance.toFixed(2)} км<br>Принимает: ${escapeHtml(accepts)}`).openOn(map);
+    });
+    recyclingList.appendChild(card);
+  });
+  setStatus("переработка найдена");
+}
+window.__selectPark = (lat, lon, name) => selectPark(lat, lon, name);
+function selectPark(lat, lon, name){
+  selectedPark = { lat, lon, name };
+  focusLayer.clearLayers();
+  L.marker([lat,lon], { icon:parkIcon() }).addTo(focusLayer).bindPopup(`Выбран парк: ${escapeHtml(name)}`).openPopup();
+  map.panTo([lat,lon]);
+  setStatus("парк выбран");
+}
+async function loadPollutionSources(){
+  sourcesLayer.clearLayers();
+  setStatus("ищем источники");
+  let count = 0;
+  for(const src of pollutionSources){
+    let point = null;
+    if(typeof src.lat === "number" && typeof src.lon === "number"){
+      point = { lat:src.lat, lon:src.lon };
+    }else if(src.query){
+      try{ point = await geocodeAddress(src.query); }catch{}
+    }
+    if(!point) continue;
+    count++;
+    L.circleMarker([point.lat,point.lon], { radius:8, color:"#ff8e8e", fillColor:"#ff5a5a", fillOpacity:.9, weight:2 }).addTo(sourcesLayer).bindPopup(`<strong>${escapeHtml(src.name)}</strong><br>Тип: ${escapeHtml(src.type)}`);
+  }
+  sourcesCount.textContent = String(count);
+}
+
+function decodePolyline(str, precision=5){
+  let index=0, lat=0, lng=0, coordinates=[];
+  const factor = Math.pow(10, precision);
+  while(index < str.length){
+    let result=0, shift=0, b;
+    do{ b=str.charCodeAt(index++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+    const dlat = (result&1) ? ~(result>>1) : (result>>1);
+    lat += dlat;
+    result=0; shift=0;
+    do{ b=str.charCodeAt(index++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+    const dlng = (result&1) ? ~(result>>1) : (result>>1);
+    lng += dlng;
+    coordinates.push([lat/factor,lng/factor]);
+  }
+  return coordinates;
+}
+
+function buildWaypoint(from,to,bias=1,amount=.018){
+  const midLat = (from.lat + to.lat) / 2 + amount * bias;
+  const midLon = (from.lon + to.lon) / 2 - amount * bias;
+  return { lat:midLat, lon:midLon };
+}
+
+async function fetchFootRoute(coords){
+  const coordString = coords.map(p => `${p.lon},${p.lat}`).join(";");
+  const url = `https://router.project-osrm.org/route/v1/foot/${coordString}?overview=full&geometries=polyline&steps=false`;
+  const data = await fetchJson(url);
+  if(!data.routes || !data.routes.length) throw new Error("Маршрут не найден");
+  const route = data.routes[0];
+  return { points:decodePolyline(route.geometry), distanceKm:route.distance/1000, durationMin:Math.round(route.duration/60) };
+}
+
+async function scorePath(points, sensitive=false){
+  const sampleStep = Math.max(1, Math.floor(points.length / 12));
+  const samples = [];
+  for(let i=0; i<points.length; i+=sampleStep){
+    const [lat, lon] = points[i];
+    try{
+      const aq = await loadOpenWeatherAQI(lat,lon);
+      samples.push(aq.aqi);
+    }catch{}
+  }
+  if(!samples.length) return { score:Infinity, avgAQI:null, maxAQI:null };
+  const avgAQI = Math.round(samples.reduce((a,b)=>a+b,0) / samples.length);
+  const maxAQI = Math.max(...samples);
+  const penalty = sensitive ? (maxAQI * 1.25 + avgAQI * .75) : (maxAQI + avgAQI * .5);
+  return { score:penalty, avgAQI, maxAQI };
+}
+
+async function tryRouteToCandidate(from,candidate){
+  try{
+    const route = await fetchFootRoute([from,candidate]);
+    return { candidate, ...route };
+  }catch{
+    return null;
+  }
+}
+
+async function findBestParkAccessPoint(from,park){
+  const d = .0015;
+  const candidates = [
+    { lat:park.lat, lon:park.lon, label:"центр парка" },
+    { lat:park.lat+d, lon:park.lon, label:"северный вход" },
+    { lat:park.lat-d, lon:park.lon, label:"южный вход" },
+    { lat:park.lat, lon:park.lon+d, label:"восточный вход" },
+    { lat:park.lat, lon:park.lon-d, label:"западный вход" }
+  ];
+  const attempts = await Promise.all(candidates.map(c => tryRouteToCandidate(from,c)));
+  const working = attempts.filter(Boolean);
+  if(!working.length) return { point:park, label:"парк", previewRoute:null };
+  working.sort((a,b) => a.distanceKm - b.distanceKm);
+  const best = working[0];
+  return { point:{ lat:best.candidate.lat, lon:best.candidate.lon }, label:best.candidate.label, previewRoute:best };
+}
+
+async function buildCleanerRoute(){
+  if(!selectedPark){
+    routeInfo.innerHTML = `<div class="card warning">Сначала выбери парк в списке или на карте.</div>`;
+    return;
+  }
+  setStatus("строим маршрут");
+  routeLayer.clearLayers();
+  const from = { lat:currentPoint.lat, lon:currentPoint.lon };
+  const sensitive = sensitivityMode.value === "sensitive";
+  const parkAccess = await findBestParkAccessPoint(from, selectedPark);
+  const to = { lat:parkAccess.point.lat, lon:parkAccess.point.lon };
+  const directDistanceKm = distanceKm(from.lat,from.lon,to.lat,to.lon);
+  const normalOffset = directDistanceKm > 3 ? .010 : .006;
+  const sensitiveOffset = directDistanceKm > 3 ? .018 : .010;
+  const offset = sensitive ? sensitiveOffset : normalOffset;
+  const waypointNorth = buildWaypoint(from,to,1,offset);
+  const waypointSouth = buildWaypoint(from,to,-1,offset);
+
+  if(!sensitive){
+    try{
+      const directRoute = parkAccess.previewRoute || await fetchFootRoute([from,to]);
+      const metrics = await scorePath(directRoute.points,false);
+      L.polyline(directRoute.points, { color:"#8df0a8", weight:6, opacity:.95 }).addTo(routeLayer).bindPopup(`Прямой пешеходный<br>Средний AQI: ${metrics.avgAQI ?? "—"}<br>Худший AQI: ${metrics.maxAQI ?? "—"}<br>Длина: ${directRoute.distanceKm.toFixed(2)} км`);
+      routeInfo.innerHTML = `<div class="card"><h4>Маршрут: почти прямой</h4><div class="muted">До точки: ${directRoute.distanceKm.toFixed(2)} км · ${directRoute.durationMin} мин пешком</div><div class="${(metrics.maxAQI ?? 999) <= 100 ? "ok" : (metrics.maxAQI ?? 999) <= 150 ? "warning" : "danger"}">Средний AQI по маршруту: ${metrics.avgAQI ?? "—"}<br>Худший AQI по маршруту: ${metrics.maxAQI ?? "—"}</div></div><div class="card muted">Режим: обычный · Точка входа: ${parkAccess.label}</div>`;
+      map.fitBounds(L.polyline(directRoute.points).getBounds(), { padding:[30,30] });
+      setStatus("маршрут готов");
+    }catch(err){
+      console.error(err);
+      routeInfo.innerHTML = `<div class="card danger">Не удалось построить прямой пешеходный маршрут.</div>`;
+      setStatus("маршрут не найден");
+    }
+    return;
+  }
+
+  const routeSpecs = [
+    { name:"Прямой пешеходный", coords:[from,to] },
+    { name:"Безопаснее севернее", coords:[from,waypointNorth,to] },
+    { name:"Безопаснее южнее", coords:[from,waypointSouth,to] }
+  ];
+
+  const candidates = [];
+  for(const spec of routeSpecs){
+    try{
+      const route = await fetchFootRoute(spec.coords);
+      const metrics = await scorePath(route.points,true);
+      candidates.push({ ...spec, ...route, metrics });
+    }catch(err){
+      console.error(spec.name,err);
+    }
+  }
+
+  if(!candidates.length){
+    routeInfo.innerHTML = `<div class="card danger">Не удалось построить пешеходный маршрут.</div>`;
+    setStatus("маршрут не найден");
+    return;
+  }
+
+  const directRoute = candidates.find(r => r.name === "Прямой пешеходный") || candidates[0];
+  const shortestRouteKm = Math.min(...candidates.map(r => r.distanceKm));
+  candidates.forEach(route => {
+    const extraKm = Math.max(0, route.distanceKm - shortestRouteKm);
+    route.finalScore = (route.metrics.score ?? 9999) + route.distanceKm * 9 + extraKm * 18;
+    if(route.distanceKm > directRoute.distanceKm * 1.18) route.finalScore += 5000;
+  });
+
+  candidates.sort((a,b) => a.finalScore - b.finalScore);
+  let best = candidates[0];
+  const directAvg = directRoute.metrics.avgAQI ?? 999;
+  const bestAvg = best.metrics.avgAQI ?? 999;
+  const directMax = directRoute.metrics.maxAQI ?? 999;
+  const bestMax = best.metrics.maxAQI ?? 999;
+  const noticeablyCleaner = (directAvg - bestAvg >= 10) || (directMax - bestMax >= 12);
+  const tooLongComparedToDirect = best.distanceKm > directRoute.distanceKm * 1.15;
+  if(best.name !== "Прямой пешеходный" && (!noticeablyCleaner || tooLongComparedToDirect)) best = directRoute;
+
+  candidates.forEach(route => {
+    const isBest = route.name === best.name && route.distanceKm === best.distanceKm;
+    L.polyline(route.points, { color:isBest ? "#8df0a8" : "#9ab8a2", weight:isBest ? 6 : 3, opacity:isBest ? .95 : .30, dashArray:isBest ? null : "6 10" }).addTo(routeLayer).bindPopup(`${escapeHtml(route.name)}<br>Средний AQI: ${route.metrics.avgAQI ?? "—"}<br>Худший AQI: ${route.metrics.maxAQI ?? "—"}<br>Длина: ${route.distanceKm.toFixed(2)} км`);
+  });
+
+  const cleanerText = best.name === "Прямой пешеходный" ? "Режим: безопасный · Выбран прямой путь." : "Режим: безопасный · Выбран маршрут с меньшей нагрузкой по воздуху.";
+  routeInfo.innerHTML = `<div class="card"><h4>Лучший маршрут: ${escapeHtml(best.name)}</h4><div class="muted">До точки: ${best.distanceKm.toFixed(2)} км · ${best.durationMin} мин пешком</div><div class="${(best.metrics.maxAQI ?? 999) <= 100 ? "ok" : (best.metrics.maxAQI ?? 999) <= 150 ? "warning" : "danger"}">Средний AQI по маршруту: ${best.metrics.avgAQI ?? "—"}<br>Худший AQI по маршруту: ${best.metrics.maxAQI ?? "—"}</div></div><div class="card muted">${cleanerText}<br>Точка входа: ${parkAccess.label}. Самый короткий путь: ${directRoute.distanceKm.toFixed(2)} км.</div>`;
+  map.fitBounds(L.polyline(best.points).getBounds(), { padding:[30,30] });
+  setStatus("маршрут готов");
+}
+
+async function focusPoint(lat, lon, label){
+  currentPoint = { lat, lon, label };
+  addressInput.value = label || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  focusLayer.clearLayers();
+  L.marker([lat,lon]).addTo(focusLayer).bindPopup(`Точка: ${escapeHtml(label)}`).openPopup();
+  map.setView([lat,lon],13);
+
+  try{
+    const aq = await loadOpenWeatherAQI(lat,lon);
+    updateAQIBox(aq);
+  }catch(err){
+    console.error(err);
+    aqiNumber.textContent = "AQI: —";
+    aqiLabel.textContent = "Данные воздуха не загрузились";
+  }
+
+  try{
+    await drawAirGrid();
+  }catch(err){
+    console.error(err);
+  }
+
+  try{
+    await loadNearbyParks(lat,lon);
+  }catch(err){
+    console.error(err);
+    parksCount.textContent = "0";
+    parksList.innerHTML = `<div class="card muted">Парки рядом сейчас не загрузились.</div>`;
+  }
+
+  try{
+    await loadRecyclingPoints(lat,lon);
+  }catch(err){
+    console.error(err);
+    recyclingCount.textContent = "0";
+    recyclingList.innerHTML = `<div class="card muted">Пункты переработки рядом сейчас не загрузились.</div>`;
+  }
+
+  setStatus("готово");
+}
+
+async function searchAddress(){
+  const value = addressInput.value.trim();
+  if(!value){
+    setStatus("введите адрес");
+    return;
+  }
+  try{
+    setStatus("ищем адрес");
+    const query = /алматы|almaty/i.test(value) ? value : `${value}, Алматы`;
+    const point = await geocodeAddress(query);
+    await focusPoint(point.lat,point.lon,point.label);
+  }catch(err){
+    console.error(err);
+    setStatus("адрес не найден");
+  }
+}
+
+async function getPreciseLocation(){
+  if(!navigator.geolocation) throw new Error("GEO_UNSUPPORTED");
+  return await new Promise((resolve,reject) => {
+    navigator.geolocation.getCurrentPosition(resolve,reject,{ enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+  });
+}
+
+async function useGeolocation(){
+  if(!navigator.geolocation){
+    setStatus("геолокация не поддерживается");
+    return;
+  }
+  setStatus("ищем геопозицию");
+  try{
+    const pos = await getPreciseLocation();
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const accuracy = Math.round(pos.coords.accuracy || 0);
+    let label = "Моя геопозиция";
+    try{ label = await reverseGeocode(lat,lon); }catch(err){ console.error(err); }
+    await focusPoint(lat,lon,label);
+    placePointB(lat,lon);
+    if(markerB) markerB.bindPopup(`Точка B — ваша геопозиция<br>Точность: ±${accuracy} м`).openPopup();
+    setStatus(accuracy ? `геопозиция найдена ±${accuracy} м` : "геопозиция найдена");
+  }catch(err){
+    console.error(err);
+    setStatus("геопозиция недоступна");
+  }
+}
+
+const markerIconA = L.divIcon({
+  className:"",
+  html:`<div style="width:32px;height:32px;background:#ef4444;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;font-family:Inter,sans-serif">A</div>`,
+  iconSize:[32,32],
+  iconAnchor:[16,16]
+});
+
+const markerIconB = L.divIcon({
+  className:"",
+  html:`<div style="width:32px;height:32px;background:#3b82f6;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;font-family:Inter,sans-serif">B</div>`,
+  iconSize:[32,32],
+  iconAnchor:[16,16]
+});
+
+function placePointA(lat, lon){
+  if(markerA) map.removeLayer(markerA);
+  pointA = { lat, lon };
+  markerA = L.marker([lat,lon], { icon:markerIconA, draggable:true }).addTo(map).bindPopup("Точка A — назначение").openPopup();
+  markerA.on("dragend", function(e){
+    const pos = e.target.getLatLng();
+    pointA = { lat:pos.lat, lon:pos.lng };
+  });
+  placingMarker = false;
+  map.getContainer().style.cursor = "";
+  abRouteInfo.innerHTML = `<div class="card ok">Метка A установлена. Нажмите «Построить чистый путь».</div>`;
+}
+
+function placePointB(lat, lon){
+  if(markerB) map.removeLayer(markerB);
+  pointB = { lat, lon };
+  markerB = L.marker([lat,lon], { icon:markerIconB }).addTo(map).bindPopup("Точка B — ваша геопозиция");
+}
+
+function generateWaypoints(from, to, count=5){
+  const waypoints = [];
+  const dLat = to.lat - from.lat;
+  const dLon = to.lon - from.lon;
+  const perpLat = -dLon;
+  const perpLon = dLat;
+  const offsets = [-.015,-.008,0,.008,.015];
+  for(let o=0; o<offsets.length; o++){
+    const wp = [];
+    for(let i=1; i<=count; i++){
+      const t = i / (count + 1);
+      wp.push({ lat:from.lat + dLat*t + perpLat*offsets[o], lon:from.lon + dLon*t + perpLon*offsets[o] });
+    }
+    waypoints.push(wp);
+  }
+  return waypoints;
+}
+
+async function buildCleanABRoute(){
+  if(!pointA){
+    abRouteInfo.innerHTML = `<div class="card warning">Сначала поставьте метку A на карте.</div>`;
+    return;
+  }
+
+  setStatus("определяем геопозицию");
+  abRouteInfo.innerHTML = `<div class="card muted">⏳ Определяем вашу геопозицию…</div>`;
+  let geoLat, geoLon, geoAccuracy = null;
+
+  try{
+    const pos = await getPreciseLocation();
+    geoLat = pos.coords.latitude;
+    geoLon = pos.coords.longitude;
+    geoAccuracy = Math.round(pos.coords.accuracy || 0);
+  }catch(err){
+    console.error(err);
+    abRouteInfo.innerHTML = `<div class="card danger">Не удалось получить геопозицию. Разрешите доступ к местоположению.</div>`;
+    setStatus("геопозиция недоступна");
+    return;
+  }
+
+  placePointB(geoLat,geoLon);
+  if(markerB && geoAccuracy) markerB.bindPopup(`Точка B — ваша геопозиция<br>Точность: ±${geoAccuracy} м`);
+  const from = { lat:geoLat, lon:geoLon };
+  const to = pointA;
+
+  setStatus("строим варианты маршрута");
+  abRouteInfo.innerHTML = `<div class="card muted">⏳ Строим маршруты и оцениваем воздух…</div>`;
+  abRouteLayer.clearLayers();
+
+  const waypointSets = generateWaypoints(from,to,3);
+  const routeSpecs = [{ name:"Прямой", coords:[from,to] }];
+  waypointSets.forEach((wps,i) => {
+    const labels = ["далеко левее","левее","прямой центр","правее","далеко правее"];
+    routeSpecs.push({ name:`Обход ${labels[i]}`, coords:[from,...wps,to] });
+  });
+
+  const candidates = [];
+  for(const spec of routeSpecs){
+    try{
+      const route = await fetchFootRoute(spec.coords);
+      const metrics = await scorePath(route.points,true);
+      candidates.push({ ...spec, ...route, metrics });
+    }catch(err){
+      console.error(spec.name,err);
+    }
+  }
+
+  if(!candidates.length){
+    abRouteInfo.innerHTML = `<div class="card danger">Не удалось построить пешеходный маршрут между точками.</div>`;
+    setStatus("маршрут не найден");
+    return;
+  }
+
+  const directRoute = candidates.find(r => r.name === "Прямой") || candidates[0];
+  const shortestKm = Math.min(...candidates.map(r => r.distanceKm));
+
+  candidates.forEach(route => {
+    const extra = Math.max(0, route.distanceKm - shortestKm);
+    route.finalScore = (route.metrics.score ?? 9999) + route.distanceKm * 8 + extra * 20;
+    if(route.distanceKm > directRoute.distanceKm * 1.35) route.finalScore += 8000;
+  });
+
+  candidates.sort((a,b) => a.finalScore - b.finalScore);
+  let best = candidates[0];
+  const dAvg = directRoute.metrics.avgAQI ?? 999;
+  const bAvg = best.metrics.avgAQI ?? 999;
+  const dMax = directRoute.metrics.maxAQI ?? 999;
+  const bMax = best.metrics.maxAQI ?? 999;
+  const noticeablyCleaner = (dAvg - bAvg >= 8) || (dMax - bMax >= 10);
+  const tooLong = best.distanceKm > directRoute.distanceKm * 1.30;
+
+  if(best.name !== "Прямой" && (!noticeablyCleaner || tooLong)){
+    best = directRoute;
+  }
+
+  candidates.forEach(route => {
+    const isBest = route === best;
+    L.polyline(route.points, {
+      color:isBest ? "#10b981" : "#94a3b8",
+      weight:isBest ? 6 : 2,
+      opacity:isBest ? .9 : .25,
+      dashArray:isBest ? null : "6 10"
+    }).addTo(abRouteLayer);
+  });
+
+  if(best !== directRoute){
+    L.polyline(directRoute.points, { color:"#ef4444", weight:3, opacity:.5, dashArray:"8 8" }).addTo(abRouteLayer).bindPopup(`Прямой маршрут<br>AQI средний: ${directRoute.metrics.avgAQI ?? "—"} · макс: ${directRoute.metrics.maxAQI ?? "—"}<br>${directRoute.distanceKm.toFixed(2)} км · ${directRoute.durationMin} мин`);
+  }
+
+  L.polyline(best.points, { color:"#10b981", weight:6, opacity:.95 }).addTo(abRouteLayer).bindPopup(`✅ Чистый маршрут<br>AQI средний: ${best.metrics.avgAQI ?? "—"} · макс: ${best.metrics.maxAQI ?? "—"}<br>${best.distanceKm.toFixed(2)} км · ${best.durationMin} мин`);
+
+  const bestStyle = getAQIStyle(best.metrics.avgAQI ?? 0);
+  const directStyle = getAQIStyle(directRoute.metrics.avgAQI ?? 0);
+  const savedAQI = (directRoute.metrics.avgAQI ?? 0) - (best.metrics.avgAQI ?? 0);
+  const extraDist = Math.max(0,best.distanceKm - directRoute.distanceKm);
+
+  abRouteInfo.innerHTML = `<div class="card"><h4>✅ Чистый маршрут: ${escapeHtml(best.name)}</h4><div style="color:${bestStyle.color};font-weight:600;margin:4px 0">AQI средний: ${best.metrics.avgAQI ?? "—"} · макс: ${best.metrics.maxAQI ?? "—"}</div><div class="muted">${best.distanceKm.toFixed(2)} км · ${best.durationMin} мин пешком</div>${savedAQI > 0 ? `<div class="ok" style="margin-top:6px">На ${savedAQI} AQI чище, чем прямой путь (+${extraDist.toFixed(2)} км)</div>` : ""}</div><div class="card"><h4 style="opacity:.6">Прямой маршрут для сравнения</h4><div style="color:${directStyle.color};font-weight:600;margin:4px 0">AQI средний: ${directRoute.metrics.avgAQI ?? "—"} · макс: ${directRoute.metrics.maxAQI ?? "—"}</div><div class="muted">${directRoute.distanceKm.toFixed(2)} км · ${directRoute.durationMin} мин пешком</div></div>`;
+
+  map.fitBounds(L.polyline(best.points).getBounds(), { padding:[40,40] });
+  setStatus("чистый маршрут готов");
+}
+
+const REFRESH_INTERVAL = 5 * 60 * 1000;
+let refreshCountdown = REFRESH_INTERVAL / 1000;
+let refreshIntervalId = null;
+let countdownId = null;
+
+async function autoRefreshAir(){
+  try{
+    setStatus("автообновление воздуха");
+    const aq = await loadOpenWeatherAQI(currentPoint.lat,currentPoint.lon);
+    updateAQIBox(aq);
+    await drawAirGrid();
+    setStatus("готово");
+  }catch(err){
+    console.error(err);
+    setStatus("ошибка обновления");
+  }
+  refreshCountdown = REFRESH_INTERVAL / 1000;
+}
+
+function startAutoRefresh(){
+  if(refreshIntervalId) clearInterval(refreshIntervalId);
+  if(countdownId) clearInterval(countdownId);
+  refreshCountdown = REFRESH_INTERVAL / 1000;
+  countdownId = setInterval(() => {
+    refreshCountdown--;
+    if(refreshCountdown < 0) refreshCountdown = REFRESH_INTERVAL / 1000;
+    const min = Math.floor(refreshCountdown / 60);
+    const sec = refreshCountdown % 60;
+    autoTimer.textContent = `Следующее обновление: ${min}:${String(sec).padStart(2,"0")}`;
+  },1000);
+  refreshIntervalId = setInterval(autoRefreshAir,REFRESH_INTERVAL);
+}
+
+searchBtn.addEventListener("click", searchAddress);
+geoBtn.addEventListener("click", useGeolocation);
+refreshBtn.addEventListener("click", () => focusPoint(currentPoint.lat,currentPoint.lon,currentPoint.label));
+routeBtn.addEventListener("click", buildCleanerRoute);
+addressInput.addEventListener("keydown", e => { if(e.key === "Enter") searchAddress(); });
+
+placeMarkerBtn.addEventListener("click", () => {
+  placingMarker = true;
+  map.getContainer().style.cursor = "crosshair";
+  abRouteInfo.innerHTML = `<div class="card warning">Кликните на карту, чтобы поставить метку A.</div>`;
+});
+
+map.on("click", e => {
+  if(!placingMarker) return;
+  placePointA(e.latlng.lat,e.latlng.lng);
+});
+
+clearMarkersBtn.addEventListener("click", () => {
+  if(markerA){ map.removeLayer(markerA); markerA = null; pointA = null; }
+  if(markerB){ map.removeLayer(markerB); markerB = null; pointB = null; }
+  abRouteLayer.clearLayers();
+  placingMarker = false;
+  map.getContainer().style.cursor = "";
+  abRouteInfo.innerHTML = `<div class="card muted">Поставьте метку на карте и нажмите «Построить чистый путь».</div>`;
+});
+
+cleanRouteBtn.addEventListener("click", buildCleanABRoute);
+
+(async function init(){
+  try{
+    await loadPollutionSources();
+  }catch(err){
+    console.error(err);
+  }
+
+  try{
+    const aq = await loadOpenWeatherAQI(currentPoint.lat,currentPoint.lon);
+    updateAQIBox(aq);
+  }catch(err){
+    console.error(err);
+  }
+
+  try{
+    await drawAirGrid();
+  }catch(err){
+    console.error(err);
+  }
+
+  try{
+    await Promise.all([
+      loadNearbyParks(currentPoint.lat,currentPoint.lon),
+      loadRecyclingPoints(currentPoint.lat,currentPoint.lon)
+    ]);
+  }catch(err){
+    console.error("Ошибка начальной загрузки парков/переработки:",err);
+  }
+  startAutoRefresh();
+  setStatus("готово");
+})();
+</script>
+</body>
+</html>
